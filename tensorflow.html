@@ -1,0 +1,107 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        margin: 0;
+        background-color: #000;
+      }
+      #frame {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+      #score {
+        position: absolute;
+        top: 0;
+        left: 0;
+        color: #fff;
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.4.0/dist/tf.min.js"></script>
+  </head>
+  <body>
+    <video id="camera" autoplay></video>
+    <canvas id="frame"></canvas>
+    <h1 id="score"></h1>
+
+    <script>
+      (async function() {
+        const width =
+          innerHeight / innerWidth > 0.75
+            ? innerWidth
+            : Math.floor((innerHeight / 3) * 4);
+        const height =
+          innerHeight / innerWidth > 0.75
+            ? Math.floor((innerWidth / 4) * 3)
+            : innerHeight;
+
+        const faceCanvas = document.createElement("canvas");
+        const faceContext = faceCanvas.getContext("2d");
+        const frameCanvas = document.getElementById("frame");
+        frameCanvas.setAttribute("width", width);
+        frameCanvas.setAttribute("height", height);
+        const frameContext = frameCanvas.getContext("2d");
+
+        const camera = document.getElementById("camera");
+        camera.setAttribute("width", width);
+        camera.setAttribute("height", height);
+        camera.srcObject = await navigator.mediaDevices.getUserMedia({
+          video: { width, height },
+          audio: false
+        });
+
+        const faceDetector = new FaceDetector({ fastMode: true });
+
+        const model = await tf.loadLayersModel("output/model.json");
+
+        setInterval(async () => {
+          const face = (await faceDetector.detect(camera))[0];
+
+          if (!face) {
+            return;
+          }
+
+          faceContext.drawImage(
+            camera,
+            face.boundingBox.x,
+            face.boundingBox.y,
+            face.boundingBox.width,
+            face.boundingBox.height,
+            0,
+            0,
+            face.boundingBox.width,
+            face.boundingBox.height
+          );
+
+          const tensor = tf.browser
+            .fromPixels(faceCanvas, 1)
+            .resizeNearestNeighbor([64, 64])
+            .toFloat()
+            .div(tf.scalar(255))
+            .expandDims();
+
+          const score = (await model.predict(tensor).data())[3];
+
+          document.getElementById("score").innerText =
+            "Smile Score: " + Math.round(score * 100);
+
+          frameContext.clearRect(0, 0, frameCanvas.width, frameCanvas.height);
+          if (score > 0.5) {
+            frameContext.strokeStyle = "green";
+          } else {
+            frameContext.strokeStyle = "red";
+          }
+          frameContext.lineWidth = 4;
+          frameContext.strokeRect(
+            face.boundingBox.x,
+            face.boundingBox.y,
+            face.boundingBox.width,
+            face.boundingBox.height
+          );
+        }, 1000);
+      })();
+    </script>
+  </body>
+</html>
